@@ -6,6 +6,7 @@
 \usage{
 ReadSample(
   RawFile = "Test.txt",
+  tabix = F,
   skip = 0,
   LCR = NULL,
   PFB = NULL,
@@ -26,5 +27,5 @@ ReadSample(
 A matrix of the infile
 }
 \description{
-This function Read a intensity file
+This function Read a intensity file also tabix
 }

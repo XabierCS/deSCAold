@@ -4,7 +4,12 @@
 \alias{runPar}
 \title{Run in Parallele  computeValues}
 \usage{
-runPar(paths, cores = 10)
+runPar(paths, cores = 10, tabixF = 0)
+}
+\arguments{
+\item{paths}{Vector containig paths for raw files}
+
+\item{cores}{number of cores}
 }
 \value{
 data frame with all computed values

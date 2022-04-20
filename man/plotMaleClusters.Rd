@@ -4,7 +4,7 @@
 \alias{plotMaleClusters}
 \title{Plot Male Clusters}
 \usage{
-plotMaleClusters(dataFrame, optimizeClusterMales)
+plotMaleClusters(dataFrame, optimizeClusterMalesObj)
 }
 \arguments{
 \item{dataFrame}{data frame with computed LRR & BAF values}

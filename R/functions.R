@@ -26,7 +26,7 @@ SlideWindowMean <- function(X, N)
 
 #' Read sample
 #'
-#' This function Read a intensity file
+#' This function Read a intensity file also tabix
 #'
 #' @param Rawfile path to file
 #' @param skip number of lines to skip
@@ -34,57 +34,43 @@ SlideWindowMean <- function(X, N)
 #' @return A matrix of the infile
 #' @export
 #' 
-ReadSample <- function(RawFile="Test.txt", skip=0, LCR=NULL, PFB=NULL, chr=NA, SNPList=NULL, start=NULL, stop=NULL)
+ReadSample <- function(RawFile="Test.txt", tabix=F, skip=0, LCR=NULL, PFB=NULL, chr=NA, SNPList=NULL, start=NULL, stop=NULL)
 {
-  suppressPackageStartupMessages(library(data.table))
-  Sample <- fread(RawFile, head=T, sep="\t", skip=skip, verbose=FALSE)
-  Sample <- as.data.frame(Sample)
-  colnames(Sample) <- gsub(" ", ".", colnames(Sample))
-  colnames(Sample)[colnames(Sample) %in% "Name"] <- "SNP.Name"
-  colnames(Sample)[colnames(Sample) %in% "Chromosome"] <- "Chr"
-  colnames(Sample)[colnames(Sample) %in% "Allele1.-.Top"] <- "Allele1"
-  colnames(Sample)[colnames(Sample) %in% "Allele2.-.Top"] <- "Allele2"
-  colnames(Sample)[colnames(Sample) %in% "BAF"] <- "B.Allele.Freq"
-  colnames(Sample)[colnames(Sample) %in% "LRR"] <- "Log.R.Ratio"
-  colnames(Sample)[grep("Log.R.Ratio", colnames(Sample))] <- "Log.R.Ratio" # Remove text from PennCNV format.
-  colnames(Sample)[grep("B.Allele.Freq", colnames(Sample))] <- "B.Allele.Freq"
-  colnames(Sample)[grep("Chr", colnames(Sample))] <- "Chr"
-  colnames(Sample)[grep("Position", colnames(Sample))] <- "Position"
-  
-  if(sum(colnames(Sample) %in% c("Log.R.Ratio", "B.Allele.Freq", "Chr")) == 0)
-  {
-    stop("\n ERROR: Could not find header.\nPlease check if you need to skip some lines using skip variable: default = 10.\nExpected header:SNP.Name\tChr\tPosition\tB.Allele.Freq\tLog.R.Ratio.\n")
+  if (tabix==T){
+    Sample <- fread(RawFile, head=F, sep="\t", skip=skip, verbose=FALSE)
+    Sample <- as.data.frame(Sample)
+    colnames(Sample)
+    colnames(Sample)<- c('Chr','Position','Position2','Log.R.Ratio','Log.R.RatioT','B.Allele.Freq','SNPname')
+    Sample$Chr[Sample$Chr==23]<-"X"
+    Sample$Chr[Sample$Chr==24]<-"Y"
+    
   }
   
+  if (tabix==F){
+    suppressPackageStartupMessages(library(data.table))
+    Sample <- fread(RawFile, head=T, sep="\t", skip=skip, verbose=FALSE)
+    Sample <- as.data.frame(Sample)
+    colnames(Sample) <- gsub(" ", ".", colnames(Sample))
+    colnames(Sample)[colnames(Sample) %in% "Name"] <- "SNP.Name"
+    colnames(Sample)[colnames(Sample) %in% "Chromosome"] <- "Chr"
+    colnames(Sample)[colnames(Sample) %in% "Allele1.-.Top"] <- "Allele1"
+    colnames(Sample)[colnames(Sample) %in% "Allele2.-.Top"] <- "Allele2"
+    colnames(Sample)[colnames(Sample) %in% "BAF"] <- "B.Allele.Freq"
+    colnames(Sample)[colnames(Sample) %in% "LRR"] <- "Log.R.Ratio"
+    colnames(Sample)[grep("Log.R.Ratio", colnames(Sample))] <- "Log.R.Ratio" # Remove text from PennCNV format.
+    colnames(Sample)[grep("B.Allele.Freq", colnames(Sample))] <- "B.Allele.Freq"
+    colnames(Sample)[grep("Chr", colnames(Sample))] <- "Chr"
+    colnames(Sample)[grep("Position", colnames(Sample))] <- "Position"
+    
+    if(sum(colnames(Sample) %in% c("Log.R.Ratio", "B.Allele.Freq", "Chr")) == 0)
+    {
+      stop("\n ERROR: Could not find header.\nPlease check if you need to skip some lines using skip variable: default = 10.\nExpected header:SNP.Name\tChr\tPosition\tB.Allele.Freq\tLog.R.Ratio.\n")
+    }
+  }
   # Windows problem
   Sample$B.Allele.Freq <- as.numeric(gsub("\\r(?!\\n)","", Sample$B.Allele.Freq, perl=T))
   Sample$Log.R.Ratio <- as.numeric(gsub("\\r(?!\\n)","", Sample$Log.R.Ratio, perl=T))
   #CNV <- CNV[,c("SNP.Name","Chr", "Position", "Log.R.Ratio", "B.Allele.Freq", "Allele1", "Allele2")] # SNP.Name
-  
-  
-  # Genotype together (deCODE)
-  #if(!is.null(Sample$Genotype))
-  #{
-  #	Allele <- sapply(Sample$Genotype, function(X){ data.frame(Allele1= unlist(strsplit(X, ""))[1], Allele2=unlist(strsplit(X, ""))[2], stringsAsFactors=F) })
-  #	Allele <- MatrixOrList2df(Allele)
-  #	Sample$Allele1 <- Allele$Allele1
-  #	Sample$Allele2 <- Allele$Allele2
-  #}
-  
-  # SNP-positionFile
-  if(!is.null(SNPList)){
-    suppressPackageStartupMessages(library(data.table))
-    SNPlist <- fread(SNPList, head=T, skip=skip, verbose=FALSE, stringsAsFactors=FALSE, colClasses =c("Chr"="factor"))
-    SNPlist <- as.data.frame(SNPlist)
-    colnames(SNPlist)[colnames(SNPlist) %in% "Name"] <- "SNP.Name"
-    colnames(SNPlist)[colnames(SNPlist) %in% "Chromosome"] <- "Chr" 
-    colnames(Sample)[colnames(Sample) %in% "BAF"] <- "B.Allele.Freq"
-    colnames(Sample)[colnames(Sample) %in% "LRR"] <- "Log.R.Ratio"
-    Sample$Chr <- NULL # remove previous values of Chr if present
-    Sample$Position <- NULL # remove previous values of Position if present
-    total <- merge(Sample, SNPlist,by="SNP.Name")
-    Sample <- total    
-  }
   
   if(sum(colnames(Sample) %in% c("Log.R.Ratio", "B.Allele.Freq", "Chr")) == 0)
   {
@@ -96,7 +82,7 @@ ReadSample <- function(RawFile="Test.txt", skip=0, LCR=NULL, PFB=NULL, chr=NA, S
   
   
   # PFB
-  if(is.null(PFB)){ Sample$PFB <- rep(0.5, nrow(Sample)) }else{ Sample$PFB <- PFB }
+  #if(is.null(PFB)){ Sample$PFB <- rep(0.5, nrow(Sample)) }else{ Sample$PFB <- PFB }
   
   # Subsetting 
   Sample <- subset(Sample, !Chr %in% c("XY", "0")) # "MT", "X", "Y",
@@ -122,20 +108,23 @@ ReadSample <- function(RawFile="Test.txt", skip=0, LCR=NULL, PFB=NULL, chr=NA, S
 
 
 
+
+
 #'Compute LRRs and BAF values
 #'
 #'  Given the path of a sample  computes  mean and sd for LRRs and  heterozigosity for BAF values per chromosome 
 #'  
 #' @import data.table
+#' @param path path to the raw intensity file
 #' @return data frame with all computed values
 #' @export 
 #' 
-computeValues<-function(path){
+computeValues<-function(path,skip=0,tabixF=F){
   print(path)
   
   start <- Sys.time()
-  Sample<-ReadSample(RawFile = path,skip=10)
-  Sample.ID<-Sample$Sample.ID[1]
+  Sample<-ReadSample(RawFile = path,skip=skip,tabix=tabixF)
+  #Sample.ID<-Sample$Sample.ID[1]
   meanS<-setDT(Sample)[ , .(mean_LRR = mean(LRR)), by = Chr]
   sdS<-setDT(Sample)[ , .(mean_LRR = sd(LRR)), by = Chr]
   BAF<-setDT(Sample)[,  .(100*(sum(B.Allele.Freq > 0.4 & B.Allele.Freq < 0.6)/length(B.Allele.Freq))), by = Chr]
@@ -154,10 +143,10 @@ computeValues<-function(path){
   BAF3<-BAF2[2,]
   colnames(BAF3)<-paste0('baf',as.character(BAF2[1,]))
   head(BAF3)
-  r0<-cbind(data.frame(Path=path,Sample.ID=Sample.ID),meanS3,sdS3,BAF3)
+  r0<-cbind(data.frame(Path=path),meanS3,sdS3,BAF3)
   end <- Sys.time()
   t5<-as.numeric (end - start, units = "mins") # or secs ..
-  print(paste0('Computing time ',t5, 'mins'))
+  print(paste0('Computing time ',round(t5,3), ' mins'))
   return(r0)
 }
 
@@ -172,94 +161,50 @@ computeValues<-function(path){
 #' @import parallel
 #' @import doParallel
 #' @import R.utils
+#' @param paths Vector containig paths for raw files
+#' @param cores number of cores
 #' @return data frame with all computed values
 #' @export 
 #' 
-runPar<-function(paths,cores=10){
+runPar<-function(paths,cores=10,tabixF=0){
   
-  
-  
-  start <- Sys.time()
-  cl <- parallel::makeCluster(cores[1]-1) #not to overload your computer
-  doParallel::registerDoParallel(cl)
-  computeValues<-function(path){
-    print(path)
-    
-    Sample<-ReadSample(RawFile = path,skip=10)
-    Sample.ID<-Sample$Sample.ID[1]
-    meanS<-setDT(Sample)[ , .(mean_LRR = mean(LRR)), by = Chr]
-    sdS<-setDT(Sample)[ , .(mean_LRR = sd(LRR)), by = Chr]
-    BAF<-setDT(Sample)[,  .(100*(sum(B.Allele.Freq > 0.4 & B.Allele.Freq < 0.6)/length(B.Allele.Freq))), by = Chr]
-    
-    meanS2<-transpose(meanS)
-    meanS3<-meanS2[2,]
-    colnames(meanS3)<-paste0('m',as.character(meanS2[1,]))
-    
-    
-    sdS2<-transpose(sdS)
-    sdS3<-sdS2[2,]
-    colnames(sdS3)<-paste0('s',as.character(sdS2[1,]))
-    head(sdS3)
-    
-    BAF2<-transpose(BAF)
-    BAF3<-BAF2[2,]
-    colnames(BAF3)<-paste0('baf',as.character(BAF2[1,]))
-    head(BAF3)
-    r0<-cbind(data.frame(Path=path,Sample.ID=Sample.ID),meanS3,sdS3,BAF3)
-    return(r0)
-  }
-  
-  ReadSample <- function(RawFile="Test.txt", skip=0, LCR=NULL, PFB=NULL, chr=NA, SNPList=NULL, start=NULL, stop=NULL)
+  ReadSample <- function(RawFile="Test.txt", tabix=F, skip=0, LCR=NULL, PFB=NULL, chr=NA, SNPList=NULL, start=NULL, stop=NULL)
   {
-    suppressPackageStartupMessages(library(data.table))
-    Sample <- fread(RawFile, head=T, sep="\t", skip=skip, verbose=FALSE)
-    Sample <- as.data.frame(Sample)
-    colnames(Sample) <- gsub(" ", ".", colnames(Sample))
-    colnames(Sample)[colnames(Sample) %in% "Name"] <- "SNP.Name"
-    colnames(Sample)[colnames(Sample) %in% "Chromosome"] <- "Chr"
-    colnames(Sample)[colnames(Sample) %in% "Allele1.-.Top"] <- "Allele1"
-    colnames(Sample)[colnames(Sample) %in% "Allele2.-.Top"] <- "Allele2"
-    colnames(Sample)[colnames(Sample) %in% "BAF"] <- "B.Allele.Freq"
-    colnames(Sample)[colnames(Sample) %in% "LRR"] <- "Log.R.Ratio"
-    colnames(Sample)[grep("Log.R.Ratio", colnames(Sample))] <- "Log.R.Ratio" # Remove text from PennCNV format.
-    colnames(Sample)[grep("B.Allele.Freq", colnames(Sample))] <- "B.Allele.Freq"
-    colnames(Sample)[grep("Chr", colnames(Sample))] <- "Chr"
-    colnames(Sample)[grep("Position", colnames(Sample))] <- "Position"
-    
-    if(sum(colnames(Sample) %in% c("Log.R.Ratio", "B.Allele.Freq", "Chr")) == 0)
-    {
-      stop("\n ERROR: Could not find header.\nPlease check if you need to skip some lines using skip variable: default = 10.\nExpected header:SNP.Name\tChr\tPosition\tB.Allele.Freq\tLog.R.Ratio.\n")
+    if (tabix==T){
+      Sample <- fread(RawFile, head=F, sep="\t", skip=skip, verbose=FALSE)
+      Sample <- as.data.frame(Sample)
+      colnames(Sample)
+      colnames(Sample)<- c('Chr','Position','Position2','Log.R.Ratio','Log.R.RatioT','B.Allele.Freq','SNPname')
+      Sample$Chr[Sample$Chr==23]<-"X"
+      Sample$Chr[Sample$Chr==24]<-"Y"
+      
     }
     
+    if (tabix==F){
+      suppressPackageStartupMessages(library(data.table))
+      Sample <- fread(RawFile, head=T, sep="\t", skip=skip, verbose=FALSE)
+      Sample <- as.data.frame(Sample)
+      colnames(Sample) <- gsub(" ", ".", colnames(Sample))
+      colnames(Sample)[colnames(Sample) %in% "Name"] <- "SNP.Name"
+      colnames(Sample)[colnames(Sample) %in% "Chromosome"] <- "Chr"
+      colnames(Sample)[colnames(Sample) %in% "Allele1.-.Top"] <- "Allele1"
+      colnames(Sample)[colnames(Sample) %in% "Allele2.-.Top"] <- "Allele2"
+      colnames(Sample)[colnames(Sample) %in% "BAF"] <- "B.Allele.Freq"
+      colnames(Sample)[colnames(Sample) %in% "LRR"] <- "Log.R.Ratio"
+      colnames(Sample)[grep("Log.R.Ratio", colnames(Sample))] <- "Log.R.Ratio" # Remove text from PennCNV format.
+      colnames(Sample)[grep("B.Allele.Freq", colnames(Sample))] <- "B.Allele.Freq"
+      colnames(Sample)[grep("Chr", colnames(Sample))] <- "Chr"
+      colnames(Sample)[grep("Position", colnames(Sample))] <- "Position"
+      
+      if(sum(colnames(Sample) %in% c("Log.R.Ratio", "B.Allele.Freq", "Chr")) == 0)
+      {
+        stop("\n ERROR: Could not find header.\nPlease check if you need to skip some lines using skip variable: default = 10.\nExpected header:SNP.Name\tChr\tPosition\tB.Allele.Freq\tLog.R.Ratio.\n")
+      }
+    }
     # Windows problem
     Sample$B.Allele.Freq <- as.numeric(gsub("\\r(?!\\n)","", Sample$B.Allele.Freq, perl=T))
     Sample$Log.R.Ratio <- as.numeric(gsub("\\r(?!\\n)","", Sample$Log.R.Ratio, perl=T))
     #CNV <- CNV[,c("SNP.Name","Chr", "Position", "Log.R.Ratio", "B.Allele.Freq", "Allele1", "Allele2")] # SNP.Name
-    
-    
-    # Genotype together (deCODE)
-    #if(!is.null(Sample$Genotype))
-    #{
-    #	Allele <- sapply(Sample$Genotype, function(X){ data.frame(Allele1= unlist(strsplit(X, ""))[1], Allele2=unlist(strsplit(X, ""))[2], stringsAsFactors=F) })
-    #	Allele <- MatrixOrList2df(Allele)
-    #	Sample$Allele1 <- Allele$Allele1
-    #	Sample$Allele2 <- Allele$Allele2
-    #}
-    
-    # SNP-positionFile
-    if(!is.null(SNPList)){
-      suppressPackageStartupMessages(library(data.table))
-      SNPlist <- fread(SNPList, head=T, skip=skip, verbose=FALSE, stringsAsFactors=FALSE, colClasses =c("Chr"="factor"))
-      SNPlist <- as.data.frame(SNPlist)
-      colnames(SNPlist)[colnames(SNPlist) %in% "Name"] <- "SNP.Name"
-      colnames(SNPlist)[colnames(SNPlist) %in% "Chromosome"] <- "Chr" 
-      colnames(Sample)[colnames(Sample) %in% "BAF"] <- "B.Allele.Freq"
-      colnames(Sample)[colnames(Sample) %in% "LRR"] <- "Log.R.Ratio"
-      Sample$Chr <- NULL # remove previous values of Chr if present
-      Sample$Position <- NULL # remove previous values of Position if present
-      total <- merge(Sample, SNPlist,by="SNP.Name")
-      Sample <- total    
-    }
     
     if(sum(colnames(Sample) %in% c("Log.R.Ratio", "B.Allele.Freq", "Chr")) == 0)
     {
@@ -271,7 +216,7 @@ runPar<-function(paths,cores=10){
     
     
     # PFB
-    if(is.null(PFB)){ Sample$PFB <- rep(0.5, nrow(Sample)) }else{ Sample$PFB <- PFB }
+    #if(is.null(PFB)){ Sample$PFB <- rep(0.5, nrow(Sample)) }else{ Sample$PFB <- PFB }
     
     # Subsetting 
     Sample <- subset(Sample, !Chr %in% c("XY", "0")) # "MT", "X", "Y",
@@ -296,6 +241,43 @@ runPar<-function(paths,cores=10){
   }
   
   
+  computeValues<-function(path,skip=0,tabixF=F){
+    print(path)
+    
+    start <- Sys.time()
+    Sample<-ReadSample(RawFile = path,skip=skip,tabix=tabixF)
+    #Sample.ID<-Sample$Sample.ID[1]
+    meanS<-setDT(Sample)[ , .(mean_LRR = mean(LRR)), by = Chr]
+    sdS<-setDT(Sample)[ , .(mean_LRR = sd(LRR)), by = Chr]
+    BAF<-setDT(Sample)[,  .(100*(sum(B.Allele.Freq > 0.4 & B.Allele.Freq < 0.6)/length(B.Allele.Freq))), by = Chr]
+    
+    meanS2<-transpose(meanS)
+    meanS3<-meanS2[2,]
+    colnames(meanS3)<-paste0('m',as.character(meanS2[1,]))
+    
+    
+    sdS2<-transpose(sdS)
+    sdS3<-sdS2[2,]
+    colnames(sdS3)<-paste0('s',as.character(sdS2[1,]))
+    head(sdS3)
+    
+    BAF2<-transpose(BAF)
+    BAF3<-BAF2[2,]
+    colnames(BAF3)<-paste0('baf',as.character(BAF2[1,]))
+    head(BAF3)
+    r0<-cbind(data.frame(Path=path),meanS3,sdS3,BAF3)
+    end <- Sys.time()
+    t5<-as.numeric (end - start, units = "mins") # or secs ..
+    print(paste0('Computing time ',round(t5,3), ' mins'))
+    return(r0)
+  }
+  
+  
+  
+  start <- Sys.time()
+  cl <- parallel::makeCluster(cores[1]-1) #not to overload your computer
+  doParallel::registerDoParallel(cl)
+
   finalMatrix <- foreach::foreach(i=paths, .combine=rbind) %dopar% {
     tempMatrix = computeValues(i) #calling a function
     #do other things if you want
@@ -307,6 +289,87 @@ runPar<-function(paths,cores=10){
   print(paste0('Computing time ',t5, 'mins'))
   return(finalMatrix)
 }
+
+
+#' Simulate male samples
+#' 
+#' Simulate male samples with SCA carriers for clustering 
+#' 
+#' @param  n Number of samples to simulate
+#' @param mXs mean LRR for X chromosome
+#' @param mYs mean LRR for Y chromosome
+#' @param sXs sd LRR for X chromosome
+#' @param sYs sd LRR for Y chromosome
+#' @param pX deviance in X chromosome for 47XXY carriers
+#' @param pY deviance in Y chromosome for 47XYY carriers
+#' @return data frame with samples (rows)  with Karyotipes, ChrX and ChrY mean LRR values (columns)
+#' @export 
+#' 
+simulMales <- function(n,mXs,mYs,sXs,sYs,pX,pY){
+  
+  x <- sort(rnorm(n,mean(mXs), sXs))
+  y <-sort(rnorm(n, mean(mYs),sYs))
+  
+  eX <- rnorm(n, 0, sXs*0.5) 
+  eY <- rnorm(n,0,sYs*0.5)
+  
+  df1<-data.frame(mX=x+eX,mY=y+eY)
+  XY <-  df1[sample(nrow(df1), size=n*0.99, replace=T),]
+  XY$kariotype <- 'XY'
+  XXY <-  df1[sample(nrow(df1), size=n*0.001, replace=T),]
+  XXY$kariotype <- 'XXY'
+  XXY$mX<-XXY$mX+pX
+  XYY <-  df1[sample(nrow(df1), size=n*0.001, replace=T),]
+  XYY$kariotype <- 'XYY'
+  XYY$mY<- XYY$mY+pY
+  XYY$mX<- XYY$mX 
+  
+  df2 <- rbind(XY,XXY,XYY)
+  return(df2)
+}
+
+
+
+
+
+
+
+#' Simulate female samples
+#' 
+#' Simulate female samples with SCA carriers for clustering 
+#' 
+#' @param  n Number of samples to simulate
+#' @param mXs mean LRR for X chromosome
+#' @param mAs mean LRR for Autosomal chromosome
+#' @param sXs sd LRR for X chromosome
+#' @param sAs sd LRR for Autosomal chromosome
+#' @param pX deviance in X chromosome for 47XXY carriers
+#' @param pA deviance in Autosomal chromosome for 47XYY carriers
+#' @return data frame with samples (rows)  with Karyotipes, ChrX and Chr-Auts mean LRR values (columns)
+#' @export 
+#'
+simulFemales <- function(n,mXs,mAs,sXs,sAs,pX,pA){
+  
+  x <- sort(rnorm(n,mean(mXs), sXs*0.8))
+  y <-sort(rnorm(n, mean(mAs),sAs*0.8))
+  
+  eX <- rnorm(n, 0, sXs*0.5) 
+  eY <- rnorm(n,0,sAs*0.5)
+  
+  df1<-data.frame(mX=x+eX,mA=y+eY)
+  XX <-  df1[sample(nrow(df1), size=n*0.99, replace=T),]
+  XX$kariotype <- 'XX'
+  XXX <-  df1[sample(nrow(df1), size=n*0.001, replace=T),]
+  XXX$kariotype <- 'XXX'
+  XXX$mX<-XXX$mX+pX
+  X <-  df1[sample(nrow(df1), size=n*0.001, replace=T),]
+  X$kariotype <- 'X'
+  X$mX<- X$mX -pX
+  
+  df2 <- rbind(XX,XXX,X)
+  return(df2)
+}
+
 
 
 
@@ -418,26 +481,27 @@ optimizeClusterMales<- function(dataFrame,minPtsRange=c(5,8,10,12,15,20,25,30,35
 #' @return Plot with male Clusters
 #' @export 
 #' 
-plotMaleClusters<- function(dataFrame,optimizeClusterMales){
+plotMaleClusters<- function(dataFrame,optimizeClusterMalesObj){
+  optimizeClusterMales<- optimizeClusterMalesObj[[2]]
   
-  #optimizeClusterMales$clusKarioCol[optimizeClusterMales$clusKario==0]<-'#adadad'
-  #optimizeClusterMales$clusKarioCol[optimizeClusterMales$clusKario==1]<-'#4F76C3'
-  #optimizeClusterMales$clusKarioCol[optimizeClusterMales$clusKario==2]<-'#D80913'
-  #optimizeClusterMales$clusKarioCol[optimizeClusterMales$clusKario==3]<-'#37C27B'
   colors<-c('#E9D400','#C31200','#1C0087' ,'#009421','grey')
-
-  optimizeClusterMales$clusKarioCol[optimizeClusterMales$clusKario3==0]<-colors[1]
-  optimizeClusterMales$clusKarioCol[optimizeClusterMales$clusKario3==1]<-colors[3]  
-  optimizeClusterMales$clusKarioCol[optimizeClusterMales$clusKario3==2]<- colors[2]
-  optimizeClusterMales$clusKarioCol[optimizeClusterMales$clusKario3==3]<-colors[4] # XYY
-  optimizeClusterMales$clusKarioCol[optimizeClusterMales$clusKario3==-1]<-colors[5] # XYY
   
+  colors<-c('#adadad','#4F76C3','#D80913' ,'#37C27B')
+  optimizeClusterMales$clusKarioCol[optimizeClusterMales$clusKario3==0]<-colors[1]
+  optimizeClusterMales$clusKarioCol[optimizeClusterMales$clusKario3==1]<-colors[2]  
+  optimizeClusterMales$clusKarioCol[optimizeClusterMales$clusKario3==2]<- colors[3]
+  optimizeClusterMales$clusKarioCol[optimizeClusterMales$clusKario3==3]<-colors[4] 
+  
+  optimizeClusterMalesInter1<- optimizeClusterMalesObj[[3]]
+  optimizeClusterMalesInter2<- optimizeClusterMalesObj[[4]]
   
   plot(dataFrame$mX,dataFrame$mY,pch=20,col=optimizeClusterMales$clusKarioCol, xlab="Chromosome X", ylab='Chromosome Y')
   rect(par("usr")[1], par("usr")[3],par("usr")[2], par("usr")[4], col = "#FFFFFA") # Color  FFFDE2
-  points(dataFrame$mX,dataFrame$mY,pch=20,col=optimizeClusterMales$clusKarioCol, xlab="Chromosome X", ylab='Chromosome Y')
-  #points(f1[[3]]$mX,f1[[3]]$mY,col=colors[5],pch=20)
-  #points(f1[[4]]$mX,f1[[4]]$mY,col=colors[5],pch=20)
+  points(dataFrame$mX,dataFrame$mY,pch=20,col=optimizeClusterMales$clusKarioCol)
+  points(optimizeClusterMalesInter1$mX,optimizeClusterMalesInter1$mY,col='#FFBC56',pch=20)
+  points(optimizeClusterMalesInter2$mX,optimizeClusterMalesInter2$mY,col='#FFBC56',pch=20)
+  
+
   
 }
 
@@ -469,9 +533,11 @@ optimizeClusterFemales<- function(dataFrame,minPtsRange=c(5,8,10,12,15,20,25,30,
       clsQC1<-c(clsQC1,list(cls[[x]]))
       clsQC2<-rbind(clsQC2,data.frame(minPts=minPtsRange[x],prob=mean(cls[[x]]$membership_prob)))
     }
-    best <- clsQC2[which.max(clsQC2$prob),]
-    bestPos<-which(minPtsRange==best$minPts)}
+    best <- clsQC2[which.max(clsQC2$prob),]}
   
+  bestPos<-which(minPtsRange==best$minPts)
+  
+  if (length(bestPos)!=0){ 
   f1<-cls[[bestPos]]
   dataFrame$cluster<-f1$cluster
   dataFrame$prob<-f1$membership_prob
@@ -520,17 +586,54 @@ optimizeClusterFemales<- function(dataFrame,minPtsRange=c(5,8,10,12,15,20,25,30,
   dataFrame$clusKario3<-dataFrame$clusKario2
   
   
-  dataFrame$clusKario3[dataFrame$id %in% mydataInterXXX$id]<-(-1)
-  dataFrame$clusKario3[dataFrame$id %in%   mydataInterX$id]<-(-1)
+  dataFrame$clusKario3[dataFrame$id %in% mydataInterXXX$id]<-(0)
+  dataFrame$clusKario3[dataFrame$id %in%   mydataInterX$id]<-(0)
+  dataFrame$clusKario<-dataFrame$clusKario3
   
   
+  
+  obj1<-list(f1,dataFrame,mydataInterXXX,mydataInterX)}
+  
+  if (length(bestPos)==0){
+    print('Cannot find best minPtsRange, optimizing clusters based on prevalence...')
+    dataFrame2<- dataFrame[with(dataFrame,order(mX)),]
+    dataFrameX0 <-   as.numeric(dataFrame2[(0.001*nrow(dataFrame)),][1])
+    dataFrameX0out <-as.numeric(dataFrame2[(0.002*nrow(dataFrame)),][1])
+    dataFrameX0int <-as.numeric(dataFrame2[(0.004*nrow(dataFrame)),][1])  
 
+    dataFrame2<- dataFrame[with(dataFrame,order(-mX)),]
+    dataFrameXXX <-   as.numeric(dataFrame2[(0.001*nrow(dataFrame)),][1])
+    dataFrameXXXout <-as.numeric(dataFrame2[(0.002*nrow(dataFrame)),][1])
+    dataFrameXXXint <-as.numeric(dataFrame2[(0.004*nrow(dataFrame)),][1])  
+
+    dataFrame$cluster<-1
+    dataFrame$cluster[dataFrame$mX<dataFrameX0int]<-5
+    dataFrame$cluster[dataFrame$mX<dataFrameX0out]<-4
+    dataFrame$cluster[dataFrame$mX<dataFrameX0]<-2
+    
+    dataFrame$cluster[dataFrame$mX>dataFrameXXXint]<-5
+    dataFrame$cluster[dataFrame$mX>dataFrameXXXout]<-4
+    dataFrame$cluster[dataFrame$mX>dataFrameXXX]<-3
+    
+    dataFrame$clusKario<-0
+    dataFrame$clusKario[dataFrame$cluster==1]<-1
+    dataFrame$clusKario[dataFrame$cluster==2]<-2
+    dataFrame$clusKario[dataFrame$cluster==3]<-3
+    dataFrame$clusKario[dataFrame$cluster==5]<-4
+    
+    
+    f1<-NULL
+    mydataInterXXX<- subset(dataFrame,dataFrame$mX<0 & dataFrame$clusKario==4)
+    mydataInterX  <- subset(dataFrame,dataFrame$mX>0 & dataFrame$clusKario==4)    
+    
+    
+    obj1<-list(f1,dataFrame,mydataInterXXX,mydataInterX)}
   
-  obj1<-list(f1,dataFrame,mydataInterXXX,mydataInterX)
-  return(obj1)
-  
+   return(obj1)
+    
+
 }
-
+  
 
 
 #' Plot Female Clusters
@@ -542,21 +645,23 @@ optimizeClusterFemales<- function(dataFrame,minPtsRange=c(5,8,10,12,15,20,25,30,
 #' @return Plot with male Clusters
 #' @export 
 #' 
-plotFemaleClusters<- function(dataFrame,optimizeClusterFemales){
+plotFemaleClusters<- function(dataFrame,optimizeClusterFemalesObj){
+  optimizeClusterFemales<- optimizeClusterFemalesObj[[2]]
   
-  colors<-c('#E9D400','#C31200','#1C0087' ,'#009421','grey')
-  optimizeClusterFemales$clusKarioCol[optimizeClusterFemales$clusKario3==0]<-colors[1]
-  optimizeClusterFemales$clusKarioCol[optimizeClusterFemales$clusKario3==1]<-colors[3]
-  optimizeClusterFemales$clusKarioCol[optimizeClusterFemales$clusKario3==2]<-colors[2]
-  optimizeClusterFemales$clusKarioCol[optimizeClusterFemales$clusKario3==3]<-colors[4]
-  optimizeClusterFemales$clusKarioCol[optimizeClusterFemales$clusKario3==-1]<-colors[5]
+  colors<-c('#adadad','#C31200','#1C0087' ,'#009421','grey')
+  colors<-c('#adadad','#4F76C3','#D80913' ,'#37C27B')
+  optimizeClusterFemales$clusKarioCol[optimizeClusterFemales$clusKario==0]<-colors[1]
+  optimizeClusterFemales$clusKarioCol[optimizeClusterFemales$clusKario==1]<-colors[2]
+  optimizeClusterFemales$clusKarioCol[optimizeClusterFemales$clusKario==2]<-colors[3]
+  optimizeClusterFemales$clusKarioCol[optimizeClusterFemales$clusKario==3]<-colors[4]
   
-  
+  optimizeClusterFemalesInter1<-optimizeClusterFemalesObj[[3]]
+  optimizeClusterFemalesInter2<-optimizeClusterFemalesObj[[4]]
   plot(dataFrame$mX,dataFrame$mA,pch=20,col=optimizeClusterFemales$clusKarioCol, xlab="Chromosome X", ylab='Autosomal Chromosomes')
   rect(par("usr")[1], par("usr")[3],par("usr")[2], par("usr")[4], col = "#FFFFFA") # Color  FFFDE2
   points(dataFrame$mX,dataFrame$mA,pch=20,col=optimizeClusterFemales$clusKarioCol)
-  #points(f1[[3]]$mX,f1[[3]]$mA,col='#FFBC56',pch=20)
-  #points(f1[[4]]$mX,f1[[4]]$mA,col='#FFBC56',pch=20)
+  points(optimizeClusterFemalesInter1$mX,optimizeClusterFemalesInter1$mA,col='#FFBC56',pch=20)
+  points(optimizeClusterFemalesInter1$mX,optimizeClusterFemalesInter1$mA,col='#FFBC56',pch=20)
   
   
 }

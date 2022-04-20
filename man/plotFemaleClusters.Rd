@@ -4,7 +4,7 @@
 \alias{plotFemaleClusters}
 \title{Plot Female Clusters}
 \usage{
-plotFemaleClusters(dataFrame, optimizeClusterFemales)
+plotFemaleClusters(dataFrame, optimizeClusterFemalesObj)
 }
 \arguments{
 \item{dataFrame}{data frame with computed LRR & BAF values}

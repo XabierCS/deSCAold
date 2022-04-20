@@ -4,7 +4,10 @@
 \alias{computeValues}
 \title{Compute LRRs and BAF values}
 \usage{
-computeValues(path)
+computeValues(path, skip = 0, tabixF = F)
+}
+\arguments{
+\item{path}{path to the raw intensity file}
 }
 \value{
 data frame with all computed values
