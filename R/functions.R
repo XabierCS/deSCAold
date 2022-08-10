@@ -314,7 +314,7 @@ simulMales <- function(n,mXs,mYs,sXs,sYs,pX,pY){
   eY <- rnorm(n,0,sYs*0.5)
   
   df1<-data.frame(mX=x+eX,mY=y+eY)
-  XY <-  df1[sample(nrow(df1), size=n*0.99, replace=T),]
+  XY <-  df1[sample(nrow(df1), size=n*0.998, replace=T),]
   XY$kariotype <- 'XY'
   XXY <-  df1[sample(nrow(df1), size=n*0.001, replace=T),]
   XXY$kariotype <- 'XXY'
@@ -357,7 +357,7 @@ simulFemales <- function(n,mXs,mAs,sXs,sAs,pX,pA){
   eY <- rnorm(n,0,sAs*0.5)
   
   df1<-data.frame(mX=x+eX,mA=y+eY)
-  XX <-  df1[sample(nrow(df1), size=n*0.99, replace=T),]
+  XX <-  df1[sample(nrow(df1), size=n*0.998, replace=T),]
   XX$kariotype <- 'XX'
   XXX <-  df1[sample(nrow(df1), size=n*0.001, replace=T),]
   XXX$kariotype <- 'XXX'
@@ -373,7 +373,7 @@ simulFemales <- function(n,mXs,mAs,sXs,sAs,pX,pA){
 
 
 
-#' Create and optimize Clusters for Males
+#' Create and optimize Clusters for Males Old
 #' 
 #' Given a data frame with mean LRR and BAF values computes SCA clusters for Males
 #' 
@@ -383,7 +383,7 @@ simulFemales <- function(n,mXs,mAs,sXs,sAs,pX,pA){
 #' @return data frame with all computed values
 #' @export 
 #' 
-optimizeClusterMales<- function(dataFrame,minPtsRange=c(5,8,10,12,15,20,25,30,35,40,50,100),interClusProb=0.5){
+optimizeClusterMalesSimp1<- function(dataFrame,minPtsRange=c(5,8,10,12,15,20,25,30,35,40,50,100),interClusProb=0.5){
   
   cls<-c()
   for (x in minPtsRange){
@@ -471,6 +471,123 @@ optimizeClusterMales<- function(dataFrame,minPtsRange=c(5,8,10,12,15,20,25,30,35
 }
 
 
+#' Create and optimize Clusters for Males
+#' 
+#' Given a data frame with mean LRR and BAF values computes SCA clusters for Males
+#' 
+#' @param dataFrame data frame with computed LRR & BAF values
+#' @param minPtsRange vector with range of values to optimize the minPts parameter 
+#' @import dbscan
+#' @return data frame with all computed values
+#' @export 
+#' 
+optimizeClusterMales<- function(dataFrame,minPtsRange=c(5,8,10,12,15,20,25,30,35,40,50,100),interClusProb=0.5){
+  
+  ## New
+  dataFrame$mX2<-round(dataFrame$mX,2)
+  dataFrame$mY2<-round(dataFrame$mY,2)
+  dataFrameOld<-dataFrame
+  sample2<- dataFrame[!duplicated(dataFrame[,c('mX2','mY2')]),]
+  dataFrame<-data.frame(mX=sample2$mX2, mY=sample2$mY2)
+  
+  
+  
+  cls<-c()
+  for (x in minPtsRange){
+    print(paste0(as.character(length(minPtsRange)-which(minPtsRange==x)),' Optimizations left...'))
+    cl1 <- hdbscan(dataFrame, minPts = x)
+    cls<-c(cls,list(cl1))
+  }
+  
+  
+  clsQC1<-c()
+  clsQC2<-data.frame()
+  
+  for (x in 1:length(minPtsRange)){
+    if (sum(c('1','2','3') %in% names(table(cls[[x]]$cluster)))==3 & length(table(cls[[x]]$cluster))<5){ 
+      clsQC1<-c(clsQC1,list(cls[[x]]))
+      clsQC2<-rbind(clsQC2,data.frame(minPts=minPtsRange[x],prob=mean(cls[[x]]$membership_prob)))
+    }
+    best <- clsQC2[which.max(clsQC2$prob),]
+    bestPos<-which(minPtsRange==best$minPts)}
+  
+  f1<-cls[[bestPos]]
+  dataFrame$cluster<-f1$cluster
+  dataFrame$prob<-f1$membership_prob
+  sample2 <- subset(dataFrame,dataFrame$cluster!=0)
+  
+  chrX <- data.frame(aggregate(sample2[,'mX'], list(sample2$cluster), mean))
+  names(chrX)<-c('group','mX')
+  XXY<-as.integer(chrX$group[which.max(chrX$mX)])
+  
+  chrY <- data.frame(aggregate(sample2[,'mY'], list(sample2$cluster), mean))
+  names(chrY)<-c('group','mY')
+  XYY<-as.integer(chrY$group[which.max(chrY$mY)])
+  
+  clusters<-c(1,2,3)
+  clusters
+  clusters <- clusters[-which(clusters ==XXY)]
+  clusters <- clusters[-which(clusters ==XYY)]
+  XY<-clusters
+  dataFrame$clusKario<-0
+  dataFrame$clusKario[dataFrame$cluster==XY]<-1
+  dataFrame$clusKario[dataFrame$cluster==XXY]<-2
+  dataFrame$clusKario[dataFrame$cluster==XYY]<-3
+  
+  
+  
+  ## Compute samples between clusters
+  dataFrame$clusKario2<-dataFrame$clusKario
+  dataFrame$id<-1:dim(dataFrame)[1]
+  sample2<-subset(dataFrame,dataFrame$clusKario==1) # subset XY Cluster
+  
+  lm3<-(lm(mY ~ mX, data = sample2)) # Compute regression line 
+  b<-as.numeric(lm3$coefficients[1])
+  mx<-as.numeric(lm3$coefficients[2])
+  
+  # Calculate samples over & under the line
+  predY<-(sample2$mX*mx)+(b)
+  dev<-sample2$mY-predY
+  sample2$xyyDev<-dev
+  
+  #XYY
+  mydataInterXYY<-subset(sample2,sample2$prob<interClusProb & sample2$xyyDev>0)
+  #mydataInterXYY_indx<-which(sample2$prob<interClusProb & sample2$xyyDev>0)
+  #dim(mydataInterXYY)
+  #XXY
+  mydataInterXXY<-subset(sample2,sample2$prob<interClusProb & sample2$xyyDev<0)
+  #mydataInterXXY_indx<-which(sample2$prob<interClusProb & sample2$xyyDev<0)
+  
+  #dim(mydataInterXXY)
+  
+  # Plot results
+  #plot(sample1$mX,sample1$mY,pch=20,col=optimizeClusterMales$clusKario+1)
+  #abline(c(b,mx))
+  #points(mydataInterXYY$mX,mydataInterXYY$mY,col='yellow',pch=20)
+  #points(mydataInterXXY$mX,mydataInterXXY$mY,col='yellow',pch=20)
+  dataFrame$clusKario3<-dataFrame$clusKario2
+  
+  dataFrame$clusKario3[dataFrame$id %in% mydataInterXYY$id]<-(-1)
+  dataFrame$clusKario3[dataFrame$id %in% mydataInterXXY$id]<-(-1)
+  
+  
+  ## new
+  names(dataFrameOld)[which(names(dataFrameOld)=='mX')]<-'mX0'
+  names(dataFrameOld)[which(names(dataFrameOld)=='mY')]<-'mY0'
+  names(dataFrameOld)[which(names(dataFrameOld)=='mX2')]<-'mX'
+  names(dataFrameOld)[which(names(dataFrameOld)=='mY2')]<-'mY'
+  
+  d2<-merge(dataFrameOld,dataFrame,by=c('mX','mY'))
+  d3<-merge(dataFrameOld,mydataInterXYY,by=c('mX','mY'))
+  d4<-merge(dataFrameOld,mydataInterXXY,by=c('mX','mY'))
+  
+  
+  #obj1<-list(f1,dataFrame,mydataInterXYY,mydataInterXXY)
+  obj1<-list(f1,d2,d3,d4)
+  return(obj1)
+  
+}
+
 
 #' Plot Male Clusters
 #' 
@@ -495,11 +612,11 @@ plotMaleClusters<- function(dataFrame,optimizeClusterMalesObj){
   optimizeClusterMalesInter1<- optimizeClusterMalesObj[[3]]
   optimizeClusterMalesInter2<- optimizeClusterMalesObj[[4]]
   
-  plot(dataFrame$mX,dataFrame$mY,pch=20,col=optimizeClusterMales$clusKarioCol, xlab="Chromosome X", ylab='Chromosome Y')
+  plot(optimizeClusterMales$mX,optimizeClusterMales$mY,pch=20,col=optimizeClusterMales$clusKarioCol, xlab="Chromosome X", ylab='Chromosome Y')
   rect(par("usr")[1], par("usr")[3],par("usr")[2], par("usr")[4], col = "#FFFFFA") # Color  FFFDE2
-  points(dataFrame$mX,dataFrame$mY,pch=20,col=optimizeClusterMales$clusKarioCol)
-  points(optimizeClusterMalesInter1$mX,optimizeClusterMalesInter1$mY,col='#FFBC56',pch=20)
-  points(optimizeClusterMalesInter2$mX,optimizeClusterMalesInter2$mY,col='#FFBC56',pch=20)
+  points(optimizeClusterMales$mX0,optimizeClusterMales$mY0,pch=20,col=optimizeClusterMales$clusKarioCol)
+  points(optimizeClusterMalesInter1$mX0,optimizeClusterMalesInter1$mY0,col='#FFBC56',pch=20)
+  points(optimizeClusterMalesInter2$mX0,optimizeClusterMalesInter2$mY0,col='#FFBC56',pch=20)
   
 
   
@@ -516,7 +633,7 @@ plotMaleClusters<- function(dataFrame,optimizeClusterMalesObj){
 #' @return data frame with all computed values
 #' @export 
 #' 
-optimizeClusterFemales<- function(dataFrame,minPtsRange=c(5,8,10,12,15,20,25,30,35,40,50,100),interClusProb=0.5){
+optimizeClusterFemalesSimp1<- function(dataFrame,minPtsRange=c(5,8,10,12,15,20,25,30,35,40,50,100),interClusProb=0.5){
   
   cls<-c()
   for (x in minPtsRange){
@@ -636,6 +753,156 @@ optimizeClusterFemales<- function(dataFrame,minPtsRange=c(5,8,10,12,15,20,25,30,
   
 
 
+
+#' Create and optimize Clusters for Females
+#' 
+#' Given a data frame with mean LRR and BAF values computes SCA clusters for Females
+#' 
+#' @param dataFrame data frame with computed LRR & BAF values
+#' @param minPtsRange vector with range of values to optimize the minPts parameter 
+#' @import dbscan
+#' @return data frame with all computed values
+#' @export 
+#' 
+optimizeClusterFemales<- function(dataFrame,minPtsRange=c(5,8,10,12,15,20,25,30,35,40,50,100),interClusProb=0.5){
+  
+  ## New
+  dataFrame$mX2<-round(dataFrame$mX,2)
+  dataFrame$mA2<-round(dataFrame$mA,2)
+  dataFrameOld<-dataFrame
+  sample2<- dataFrame[!duplicated(dataFrame[,c('mX2','mA2')]),]
+  dataFrame<-data.frame(mX=sample2$mX2, mA=sample2$mA2)
+  
+  
+  
+  cls<-c()
+  for (x in minPtsRange){
+    print(paste0(as.character(length(minPtsRange)-which(minPtsRange==x)),' Optimizations left...'))
+    cl1 <- hdbscan(dataFrame, minPts = x)
+    cls<-c(cls,list(cl1))
+  }
+  
+  clsQC1<-c()
+  clsQC2<-data.frame()
+  
+  for (x in 1:length(minPtsRange)){
+    if (sum(c('1','2','3') %in% names(table(cls[[x]]$cluster)))==3 & length(table(cls[[x]]$cluster))<5){ 
+      clsQC1<-c(clsQC1,list(cls[[x]]))
+      clsQC2<-rbind(clsQC2,data.frame(minPts=minPtsRange[x],prob=mean(cls[[x]]$membership_prob)))
+    }
+    best <- clsQC2[which.max(clsQC2$prob),]}
+  
+  bestPos<-which(minPtsRange==best$minPts)
+  
+  if (length(bestPos)!=0){ 
+    f1<-cls[[bestPos]]
+    dataFrame$cluster<-f1$cluster
+    dataFrame$prob<-f1$membership_prob
+    sample2 <- subset(dataFrame,dataFrame$cluster!=0)
+    
+    chrX <- data.frame(aggregate(sample2[,'mX'], list(sample2$cluster), mean))
+    names(chrX)<-c('group','mX')
+    XXX<-as.integer(chrX$group[which.max(chrX$mX)])
+    
+    X<-as.integer(chrX$group[which.min(chrX$mX)])
+    
+    clusters<-c(1,2,3)
+    clusters
+    clusters <- clusters[-which(clusters ==XXX)]
+    clusters <- clusters[-which(clusters ==X)]
+    XX<-clusters
+    dataFrame$clusKario<-0
+    dataFrame$clusKario[dataFrame$cluster==XX]<-1
+    dataFrame$clusKario[dataFrame$cluster==XXX]<-2
+    dataFrame$clusKario[dataFrame$cluster==X]<-3
+    
+    
+    
+    ## Compute samples between clusters
+    dataFrame$clusKario2<-dataFrame$clusKario
+    dataFrame$id<-1:dim(dataFrame)[1]
+    sample2<-subset(dataFrame,dataFrame$clusKario==1) # subset XX Cluster
+    
+    lm3<-(lm(mA ~ mX, data = sample2)) # Compute regression line 
+    b<-as.numeric(lm3$coefficients[1])
+    mx<-as.numeric(lm3$coefficients[2])
+    
+    # Calculate samples over & under the line
+    predA<-(sample2$mX*mx)+(b)
+    dev<-sample2$mA-predA
+    sample2$xxDev<-dev
+    
+    #XXX
+    mydataInterXXX<-subset(sample2,sample2$prob<interClusProb & sample2$xxDev>0)
+    dim(mydataInterXXX)
+    
+    #X
+    mydataInterX<-subset(sample2,sample2$prob<interClusProb & sample2$xxDev<0)
+    
+    
+    dataFrame$clusKario3<-dataFrame$clusKario2
+    
+    
+    dataFrame$clusKario3[dataFrame$id %in% mydataInterXXX$id]<-(0)
+    dataFrame$clusKario3[dataFrame$id %in%   mydataInterX$id]<-(0)
+    dataFrame$clusKario<-dataFrame$clusKario3
+    
+    names(dataFrameOld)[which(names(dataFrameOld)=='mX')]<-'mX0'
+    names(dataFrameOld)[which(names(dataFrameOld)=='mA')]<-'mA0'
+    names(dataFrameOld)[which(names(dataFrameOld)=='mX2')]<-'mX'
+    names(dataFrameOld)[which(names(dataFrameOld)=='mA2')]<-'mA'
+    
+    
+    d2<-merge(dataFrameOld,dataFrame,by=c('mX','mA'))
+    d3<-merge(dataFrameOld,mydataInterXXX,by=c('mX','mA'))
+    d4<-merge(dataFrameOld,mydataInterX,by=c('mX','mA'))
+    
+    #obj1<-list(f1,dataFrame,mydataInterXXX,mydataInterX)}
+    obj1<-list(f1,d2,d3,d4)
+}
+    
+  if (length(bestPos)==0){
+    print('Cannot find best minPtsRange, optimizing clusters based on prevalence...')
+    dataFrame2<- dataFrame[with(dataFrame,order(mX)),]
+    dataFrameX0 <-   as.numeric(dataFrame2[(0.001*nrow(dataFrame)),][1])
+    dataFrameX0out <-as.numeric(dataFrame2[(0.002*nrow(dataFrame)),][1])
+    dataFrameX0int <-as.numeric(dataFrame2[(0.004*nrow(dataFrame)),][1])  
+    
+    dataFrame2<- dataFrame[with(dataFrame,order(-mX)),]
+    dataFrameXXX <-   as.numeric(dataFrame2[(0.001*nrow(dataFrame)),][1])
+    dataFrameXXXout <-as.numeric(dataFrame2[(0.002*nrow(dataFrame)),][1])
+    dataFrameXXXint <-as.numeric(dataFrame2[(0.004*nrow(dataFrame)),][1])  
+    
+    dataFrame$cluster<-1
+    dataFrame$cluster[dataFrame$mX<dataFrameX0int]<-5
+    dataFrame$cluster[dataFrame$mX<dataFrameX0out]<-4
+    dataFrame$cluster[dataFrame$mX<dataFrameX0]<-2
+    
+    dataFrame$cluster[dataFrame$mX>dataFrameXXXint]<-5
+    dataFrame$cluster[dataFrame$mX>dataFrameXXXout]<-4
+    dataFrame$cluster[dataFrame$mX>dataFrameXXX]<-3
+    
+    dataFrame$clusKario<-0
+    dataFrame$clusKario[dataFrame$cluster==1]<-1
+    dataFrame$clusKario[dataFrame$cluster==2]<-2
+    dataFrame$clusKario[dataFrame$cluster==3]<-3
+    dataFrame$clusKario[dataFrame$cluster==5]<-4
+    
+    
+    f1<-NULL
+    mydataInterXXX<- subset(dataFrame,dataFrame$mX<0 & dataFrame$clusKario==4)
+    mydataInterX  <- subset(dataFrame,dataFrame$mX>0 & dataFrame$clusKario==4)    
+    
+    
+    obj1<-list(f1,dataFrame,mydataInterXXX,mydataInterX)}
+  
+  return(obj1)
+  
+  
+
+}
+
+
 #' Plot Female Clusters
 #' 
 #' Given the optimizeClusterFemales output is plots the results
@@ -657,11 +924,11 @@ plotFemaleClusters<- function(dataFrame,optimizeClusterFemalesObj){
   
   optimizeClusterFemalesInter1<-optimizeClusterFemalesObj[[3]]
   optimizeClusterFemalesInter2<-optimizeClusterFemalesObj[[4]]
-  plot(dataFrame$mX,dataFrame$mA,pch=20,col=optimizeClusterFemales$clusKarioCol, xlab="Chromosome X", ylab='Autosomal Chromosomes')
+  plot(optimizeClusterFemales$mX,optimizeClusterFemales$mA,pch=20,col=optimizeClusterFemales$clusKarioCol, xlab="Chromosome X", ylab='Autosomal Chromosomes')
   rect(par("usr")[1], par("usr")[3],par("usr")[2], par("usr")[4], col = "#FFFFFA") # Color  FFFDE2
-  points(dataFrame$mX,dataFrame$mA,pch=20,col=optimizeClusterFemales$clusKarioCol)
-  points(optimizeClusterFemalesInter1$mX,optimizeClusterFemalesInter1$mA,col='#FFBC56',pch=20)
-  points(optimizeClusterFemalesInter1$mX,optimizeClusterFemalesInter1$mA,col='#FFBC56',pch=20)
+  points(optimizeClusterFemales$mX0,optimizeClusterFemales$mA0,pch=20,col=optimizeClusterFemales$clusKarioCol)
+  points(optimizeClusterFemalesInter1$mX0,optimizeClusterFemalesInter1$mA0,col='#FFBC56',pch=20)
+  points(optimizeClusterFemalesInter1$mX0,optimizeClusterFemalesInter1$mA0,col='#FFBC56',pch=20)
   
   
 }
